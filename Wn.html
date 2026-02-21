@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Webnovel Inkstone Editor</title>
+  <link rel="stylesheet" href="wn.css" />
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/react-quill@2.0.0/dist/quill.snow.css"
+  />
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="module">
+    import React, { useEffect, useMemo, useState } from "https://esm.sh/react@18.2.0";
+    import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
+    import ReactQuill from "https://esm.sh/react-quill@2.0.0";
+
+    const AUTOSAVE_INTERVAL_MS = 10000;
+
+    function getPlainText(html) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html || "", "text/html");
+      return (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+    }
+
+    function App() {
+      const [chapterTitle, setChapterTitle] = useState("");
+      const [content, setContent] = useState("");
+      const [statusMessage, setStatusMessage] = useState("No drafts saved yet.");
+      const [lastSavedAt, setLastSavedAt] = useState(null);
+
+      const wordCount = useMemo(() => {
+        const plainText = getPlainText(content);
+        if (!plainText) return 0;
+        return plainText.split(" ").filter(Boolean).length;
+      }, [content]);
+
+      const performSave = (type = "Draft") => {
+        const payload = {
+          chapterTitle,
+          content,
+          wordCount,
+          savedType: type,
+          timestamp: new Date().toISOString(),
+        };
+
+        localStorage.setItem("novelEditorData", JSON.stringify(payload));
+
+        const formattedTime = new Date(payload.timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+
+        setLastSavedAt(formattedTime);
+        setStatusMessage(`${type} saved at ${formattedTime}`);
+      };
+
+      useEffect(() => {
+        const saved = localStorage.getItem("novelEditorData");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setChapterTitle(parsed.chapterTitle || "");
+          setContent(parsed.content || "");
+          setStatusMessage(`Loaded previous ${parsed.savedType?.toLowerCase() || "draft"}.`);
+          if (parsed.timestamp) {
+            setLastSavedAt(new Date(parsed.timestamp).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }));
+          }
+        }
+      }, []);
+
+      useEffect(() => {
+        const intervalId = setInterval(() => {
+          performSave("Auto-save");
+        }, AUTOSAVE_INTERVAL_MS);
+
+        return () => clearInterval(intervalId);
+      }, [chapterTitle, content, wordCount]);
+
+      const toolbarOptions = [
+        [{ header: [1, 2, 3, false] }],
+        ["bold", "italic", "underline"],
+        [{ list: "ordered" }, { list: "bullet" }],
+        ["blockquote", "link"],
+        ["clean"],
+      ];
+
+      return React.createElement(
+        "main",
+        { className: "editor-page" },
+        React.createElement("header", { className: "editor-header" },
+          React.createElement("h1", null, "Webnovel Inkstone Editor"),
+          React.createElement("p", null, "A focused Inkstone-style workspace for writing and publishing chapters.")
+        ),
+        React.createElement("section", { className: "editor-card" },
+          React.createElement("label", { className: "field-label", htmlFor: "chapterTitle" }, "Chapter Title"),
+          React.createElement("input", {
+            id: "chapterTitle",
+            className: "title-input",
+            type: "text",
+            placeholder: "Enter chapter title...",
+            value: chapterTitle,
+            onChange: (e) => setChapterTitle(e.target.value),
+          }),
+          React.createElement("div", { className: "meta-row" },
+            React.createElement("span", { className: "word-count" }, `Word Count: ${wordCount}`),
+            React.createElement("span", { className: "save-status" }, lastSavedAt ? `Last saved: ${lastSavedAt}` : "Not saved yet")
+          ),
+          React.createElement(ReactQuill, {
+            theme: "snow",
+            value: content,
+            onChange: setContent,
+            placeholder: "Start writing your chapter...",
+            modules: { toolbar: toolbarOptions },
+          }),
+          React.createElement("div", { className: "action-row" },
+            React.createElement("button", { className: "secondary-btn", onClick: () => performSave("Draft") }, "Save Draft"),
+            React.createElement("button", { className: "primary-btn", onClick: () => performSave("Published") }, "Publish")
+          ),
+          React.createElement("p", { className: "status-message", role: "status" }, statusMessage)
+        )
+      );
+    }
+
+    createRoot(document.getElementById("root")).render(React.createElement(App));
+  </script>
+</body>
+</html>
